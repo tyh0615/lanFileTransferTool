@@ -1,0 +1,15 @@
+:root {
+  --color-bg: #0f0f1a;
+  --color-surface: #1a1a2e;
+  --color-surface-hover: #222240;
+  --color-border: #2a2a4a;
+  --color-text: #e0e0e0;
+  --color-text-secondary: #8888aa;
+  --color-primary: #4f7cff;
+  --color-primary-hover: #6690ff;
+  --color-success: #2ecc71;
+  --color-warning: #f39c12;
+  --color-error: #e74c3c;
+  --color-info: #3498db;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+}
