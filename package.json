@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:worker": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "html5-qrcode": "^2.3.8",
@@ -22,6 +24,7 @@
     "typescript": "~5.7.3",
     "unocss": "^66.6.8",
     "vite": "^6.3.5",
-    "vue-tsc": "^2.2.8"
+    "vue-tsc": "^2.2.8",
+    "wrangler": "^4.93.0"
   }
 }

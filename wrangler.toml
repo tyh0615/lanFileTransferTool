@@ -1,0 +1,8 @@
+name = "lan-file-transfer-tool"
+main = "worker/index.ts"
+assets = { directory = "dist", binding = "ASSETS" }
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[observability]]
+enabled = true
