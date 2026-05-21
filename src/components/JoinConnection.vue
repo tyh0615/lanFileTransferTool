@@ -1,62 +1,66 @@
 <template>
-
   <p class="text-xs text-[var(--color-text-secondary)] mb-3">
-      扫描对方二维码，或粘贴对方的连接信息后点击一键加入。
-    </p>
+    扫描对方二维码，或粘贴对方的连接信息后点击一键加入。
+  </p>
 
-    <!-- Scan QR button -->
+  <!-- Scan QR button -->
+  <button
+    class="btn-outline w-full mb-3"
+    :disabled="joining"
+    @click="startScan"
+  >
+    {{ scanning ? '扫描中...' : '扫描二维码' }}
+  </button>
+
+  <!-- Scanner view -->
+  <div v-if="scanning" class="mb-3">
+    <div ref="scannerContainer" class="w-full rounded-md overflow-hidden" />
     <button
-      class="btn-outline w-full mb-3"
-      :disabled="joining"
-      @click="startScan"
+      class="btn-danger w-full mt-2 text-xs!"
+      @click="stopScan"
     >
-      {{ scanning ? '扫描中...' : '扫描二维码' }}
+      取消扫描
     </button>
+  </div>
 
-    <!-- Scanner view -->
-    <div v-if="scanning" class="mb-3">
-      <div ref="scannerContainer" class="w-full rounded-md overflow-hidden" />
-      <button
-        class="btn-danger w-full mt-2 text-xs!"
-        @click="stopScan"
-      >
-        取消扫描
+  <div class="flex items-center gap-2 mb-3">
+    <div class="flex-1 h-px bg-[var(--color-border)]" />
+    <span class="text-xs text-[var(--color-text-secondary)]">或手动粘贴</span>
+    <div class="flex-1 h-px bg-[var(--color-border)]" />
+  </div>
+
+  <textarea
+    v-model="inputSdp"
+    class="input w-full mb-3 font-mono! text-xs!"
+    placeholder="在此粘贴对方的 6 位连接码或连接信息..."
+    rows="4"
+  />
+  <button
+    class="btn-primary w-full mb-3"
+    :disabled="!inputSdp.trim() || joining"
+    @click="handleJoin"
+  >
+    {{ joining ? '正在加入...' : '一键加入' }}
+  </button>
+
+  <!-- Answer SDP Display (only when NOT auto-posted) -->
+  <div v-if="localSdp && !autoPosted" class="mt-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="label-text">回传信息（发送给对方）</span>
+      <button class="btn-outline text-xs! px-2! py-1! min-h-8!" @click="handleCopy">
+        {{ copied ? '已复制' : '一键复制' }}
       </button>
     </div>
+    <pre class="max-h-40 overflow-y-auto text-xs! p-3!">{{ localSdp }}</pre>
+    <p class="text-xs text-[var(--color-warning)] mt-2">
+      请将以上回传信息复制发送给对方，对方粘贴后即可完成连接。
+    </p>
+  </div>
 
-    <div class="flex items-center gap-2 mb-3">
-      <div class="flex-1 h-px bg-[var(--color-border)]" />
-      <span class="text-xs text-[var(--color-text-secondary)]">或手动粘贴</span>
-      <div class="flex-1 h-px bg-[var(--color-border)]" />
-    </div>
-
-    <textarea
-      v-model="inputSdp"
-      class="input w-full mb-3 font-mono! text-xs!"
-      placeholder="在此粘贴对方的 6 位连接码或连接信息..."
-      rows="4"
-    />
-    <button
-      class="btn-primary w-full mb-3"
-      :disabled="!inputSdp.trim() || joining"
-      @click="handleJoin"
-    >
-      {{ joining ? '正在加入...' : '一键加入' }}
-    </button>
-
-    <!-- Answer SDP Display -->
-    <div v-if="localSdp" class="mt-3">
-      <div class="flex items-center justify-between mb-2">
-        <span class="label-text">回传信息（发送给对方）</span>
-        <button class="btn-outline text-xs! px-2! py-1! min-h-8!" @click="handleCopy">
-          {{ copied ? '已复制' : '一键复制' }}
-        </button>
-      </div>
-      <pre class="max-h-40 overflow-y-auto text-xs! p-3!">{{ localSdp }}</pre>
-      <p class="text-xs text-[var(--color-warning)] mt-2">
-        请将以上回传信息复制发送给对方，对方粘贴后即可完成连接。
-      </p>
-    </div>
+  <!-- Auto-complete indicator -->
+  <div v-if="autoPosted" class="mt-3 p-3 rounded-md bg-[var(--color-success)]/10 border border-[var(--color-success)] text-xs text-[var(--color-success)]">
+    连接信息已自动回传，等待对方确认建立连接...
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -69,6 +73,7 @@ const props = defineProps<{
   localSdp: string
   joining: boolean
   autoSdp?: string
+  autoPosted: boolean
 }>()
 
 const emit = defineEmits<{
@@ -109,10 +114,8 @@ async function startScan() {
         qrbox: { width: 250, height: 250 },
       },
       (decodedText: string) => {
-        // QR code decoded successfully
         inputSdp.value = decodedText
         stopScan()
-        // Auto-join after scan
         if (decodedText.trim()) {
           emit('join', decodedText.trim())
         }

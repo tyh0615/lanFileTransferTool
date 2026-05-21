@@ -40,6 +40,7 @@
                 :share-url="shareUrl"
                 :code="code"
                 :creating="connectionState === 'creating'"
+                :using-api="usingApi"
                 @create="handleCreate"
               />
               <JoinConnection
@@ -47,7 +48,8 @@
                 :connection-state="connectionState"
                 :local-sdp="answerSdp"
                 :joining="connectionState === 'answering'"
-                :auto-s-d-p="autoJoinSdp"
+                :auto-sdp="autoJoinSdp"
+                :auto-posted="autoPosted"
                 @join="handleJoin"
               />
             </div>
@@ -126,7 +128,7 @@
       </div>
     </main>
 
-    <!-- Answer paste modal -->
+    <!-- Answer paste modal (only shown in fallback/manual mode) -->
     <Teleport to="body">
       <div
         v-if="showAnswerInput"
@@ -136,13 +138,13 @@
         <div class="card w-full max-w-lg" @click.stop>
           <h3 class="section-title mb-3">完成连接</h3>
           <p class="text-xs text-[var(--color-text-secondary)] mb-3">
-            请粘贴对方回传的连接信息以完成连接建立。
+            对方加入后会生成一段回传信息（Answer），请将其粘贴到下方以完成连接。
           </p>
           <textarea
             v-model="remoteSdpInput"
             class="input w-full mb-3 font-mono! text-xs!"
             rows="4"
-            placeholder="在此粘贴对方回传的连接信息..."
+            placeholder="在此粘贴对方复制给你的回传信息..."
           />
           <div class="flex gap-3">
             <button class="btn-outline flex-1" @click="showAnswerInput = false">取消</button>
@@ -197,6 +199,7 @@ const {
   createConnection,
   joinConnection,
   completeConnection,
+  detectPublicIP,
 } = useWebRTC()
 
 const {
@@ -241,6 +244,8 @@ const shareUrl = ref('')
 const code = ref('')
 const answerSdp = ref('')
 const autoJoinSdp = ref('')
+const usingApi = ref(false)
+const autoPosted = ref(false)
 const showAnswerInput = ref(false)
 const remoteSdpInput = ref('')
 const sendingFiles = ref(false)
@@ -289,8 +294,9 @@ watch(dataChannel, (dc) => {
   }
 })
 
-// ===== Auto-join from URL hash =====
-onMounted(() => {
+// ===== Init: detect IPs on page load + auto-join from URL hash =====
+onMounted(async () => {
+  detectPublicIP()
   const hash = window.location.hash.slice(1)
   if (hash) {
     autoJoinSdp.value = hash
@@ -305,7 +311,12 @@ async function handleCreate() {
     const result = await createConnection()
     shareUrl.value = result.url
     code.value = result.code
-    addLog('连接信息已生成，请复制发送给对方', 'info')
+    usingApi.value = result.usingApi
+    if (result.usingApi) {
+      addLog('连接信息已生成，等待对方加入（连接将自动建立）', 'info')
+    } else {
+      addLog('连接信息已生成，请将链接或连接码发送给对方', 'info')
+    }
   } catch (e: any) {
     addLog(`创建连接失败: ${e.message}`, 'error')
     showToast('创建连接失败', 'error')
@@ -315,9 +326,19 @@ async function handleCreate() {
 async function handleJoin(offerStr: string) {
   try {
     addLog('开始加入连接...', 'info')
-    const sdp = await joinConnection(offerStr)
-    answerSdp.value = sdp
-    addLog('回传信息已生成，请复制发送给对方', 'info')
+    const result = await joinConnection(offerStr)
+    autoPosted.value = result.autoPosted
+    if (result.autoPosted) {
+      addLog('已自动完成连接', 'info')
+      answerSdp.value = ''
+    } else {
+      answerSdp.value = result.answerSdp
+      if (result.usingApi) {
+        addLog('自动回传失败，请手动复制回传信息给对方', 'warn')
+      } else {
+        addLog('回传信息已生成，请复制发送给对方', 'info')
+      }
+    }
   } catch (e: any) {
     addLog(`加入连接失败: ${e.message}`, 'error')
     showToast('加入连接失败，请检查连接信息是否有效', 'error')
@@ -325,8 +346,10 @@ async function handleJoin(offerStr: string) {
 }
 
 watch(connectionState, (state) => {
-  if (state === 'offering') {
+  if (state === 'offering' && !usingApi.value) {
     showAnswerInput.value = true
+  } else if (state === 'creating' || state === 'connected') {
+    showAnswerInput.value = false
   }
 })
 

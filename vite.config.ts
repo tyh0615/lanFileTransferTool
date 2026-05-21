@@ -3,9 +3,15 @@ import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import type { IncomingMessage, ServerResponse } from 'http'
 
-// In-memory SDP store: short code → packed SDP
-const sdpStore = new Map<string, string>()
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // 30 chars, no I/O/0/1
+interface Session {
+  offer: string
+  answer?: string
+  offerIP?: string
+  timestamp: number
+}
+
+const sessions = new Map<string, Session>()
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const CODE_LEN = 6
 
 function generateCode(): string {
@@ -13,12 +19,10 @@ function generateCode(): string {
   for (let i = 0; i < CODE_LEN; i++) {
     code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
   }
-  // Avoid collision (extremely unlikely but safe)
-  if (sdpStore.has(code)) return generateCode()
+  if (sessions.has(code)) return generateCode()
   return code
 }
 
-// Parse JSON body from request
 function parseBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = ''
@@ -42,37 +46,83 @@ function signalingPlugin() {
           return
         }
 
+        const url = new URL(req.url!, 'http://localhost')
+        const code = url.searchParams.get('code')
+        const listMode = url.searchParams.get('list')
+
+        // List connections by IP
+        if (req.method === 'GET' && listMode === 'true') {
+          const filterIP = url.searchParams.get('ip') || ''
+          const matches: { code: string; offerIP?: string }[] = []
+          const now = Date.now()
+          for (const [c, s] of sessions) {
+            if (now - s.timestamp > 600000) {
+              sessions.delete(c)
+              continue
+            }
+            if (!s.answer && s.offerIP === filterIP) {
+              matches.push({ code: c, offerIP: s.offerIP })
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(matches))
+          return
+        }
+
+        // POST — store offer or answer
         if (req.method === 'POST') {
           const raw = await parseBody(req)
           const body = JSON.parse(raw)
-          const packedSdp = body.sdp
-          if (!packedSdp) {
+          const sdp = body.sdp
+          if (!sdp) {
             res.writeHead(400)
             res.end(JSON.stringify({ error: 'missing sdp' }))
             return
           }
-          const code = generateCode()
-          sdpStore.set(code, packedSdp)
+
+          if (code) {
+            // POST with code = store answer
+            if (!sessions.has(code)) {
+              res.writeHead(404)
+              res.end(JSON.stringify({ error: 'code not found' }))
+              return
+            }
+            const session = sessions.get(code)!
+            session.answer = sdp
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: true }))
+            // Cleanup 5s after both sides complete
+            setTimeout(() => sessions.delete(code), 5000)
+            return
+          }
+
+          // POST without code = create new session with offer
+          const newCode = generateCode()
+          sessions.set(newCode, {
+            offer: sdp,
+            offerIP: body.publicIP || undefined,
+            timestamp: Date.now(),
+          })
           // Auto-expire after 10 minutes
-          setTimeout(() => sdpStore.delete(code), 600000)
+          setTimeout(() => sessions.delete(newCode), 600000)
           res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ code }))
+          res.end(JSON.stringify({ code: newCode }))
           return
         }
 
+        // GET — retrieve session by code
         if (req.method === 'GET') {
-          const url = new URL(req.url!, `http://localhost`)
-          const code = url.searchParams.get('code')
-          if (!code || !sdpStore.has(code)) {
+          if (!code || !sessions.has(code)) {
             res.writeHead(404)
             res.end(JSON.stringify({ error: 'code not found' }))
             return
           }
-          const sdp = sdpStore.get(code)
-          // One-time use: delete after retrieval
-          sdpStore.delete(code)
-          res.writeHead(200, { 'Content-Type': 'text/plain' })
-          res.end(sdp)
+          const session = sessions.get(code)!
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            offer: session.offer,
+            answer: session.answer || null,
+          }))
           return
         }
 

@@ -38,8 +38,12 @@
       </div>
     </div>
 
-    <p class="text-xs text-[var(--color-warning)]">
-      等待对方加入...请保持当前页面停留。
+    <!-- Status message -->
+    <p v-if="usingApi" class="text-xs text-[var(--color-success)]">
+      等待对方加入...连接将自动建立，无需其他操作。
+    </p>
+    <p v-else class="text-xs text-[var(--color-warning)]">
+      请将连接信息发送给对方。对方加入后会产生回传信息，请粘贴到弹窗中完成连接。
     </p>
   </div>
 </template>
@@ -54,6 +58,7 @@ const props = defineProps<{
   shareUrl: string
   code: string
   creating: boolean
+  usingApi: boolean
 }>()
 
 const emit = defineEmits<{
